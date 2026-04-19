@@ -31,7 +31,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Ну здарова. Записываю напоминалки.\n\n"
         "/add ДД.ММ текст — добавить\n"
-        "  Пример: /add 25.04 Днюха у Васи\n\n"
+        "/add ДД.ММ.ГГГГ текст — добавить с годом (посчитаю сколько лет)\n"
+        "  Пример: /add 25.04.1990 Днюха у Васи\n\n"
         "/list — показать все\n"
         "/del N — удалить по номеру"
     )
@@ -40,7 +41,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args or len(context.args) < 2:
         await update.message.reply_text(
-            "Формат: /add ДД.ММ текст\nПример: /add 25.04 Днюха у Васи"
+            "Формат: /add ДД.ММ текст или /add ДД.ММ.ГГГГ текст\n"
+            "Пример: /add 25.04.1990 Днюха у Васи"
         )
         return
 
@@ -49,20 +51,31 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         parts = date_str.split(".")
-        if len(parts) != 2:
+        if len(parts) == 2:
+            day, month = int(parts[0]), int(parts[1])
+            year = None
+            datetime(2000, month, day)
+        elif len(parts) == 3:
+            day, month, year = int(parts[0]), int(parts[1]), int(parts[2])
+            datetime(year, month, day)
+        else:
             raise ValueError
-        day, month = int(parts[0]), int(parts[1])
-        datetime(2000, month, day)  # проверка что дата вообще существует
     except Exception:
-        await update.message.reply_text("Дата кривая. Нужно ДД.ММ, например 25.04")
+        await update.message.reply_text("Дата кривая. Нужно ДД.ММ или ДД.ММ.ГГГГ, например 25.04.1990")
         return
 
     reminders = load()
-    reminders.append({"date": date_str, "text": text})
+    entry = {"date": f"{parts[0]}.{parts[1]}", "text": text}
+    if year:
+        entry["year"] = year
+    reminders.append(entry)
     reminders.sort(key=lambda x: (int(x["date"].split(".")[1]), int(x["date"].split(".")[0])))
     save(reminders)
 
-    await update.message.reply_text(f"Записал: {date_str} — {text}")
+    if year:
+        await update.message.reply_text(f"Записал: {date_str} — {text}")
+    else:
+        await update.message.reply_text(f"Записал: {date_str} — {text}")
 
 
 async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -104,16 +117,21 @@ async def daily_check(context: ContextTypes.DEFAULT_TYPE):
 
     reminders = load()
     for r in reminders:
+        year = r.get("year")
         if r["date"] == today_str:
-            await context.bot.send_message(
-                chat_id=OWNER_ID,
-                text=f"Сегодня: {r['text']}"
-            )
+            if year:
+                age = today.year - year
+                msg = f"Сегодня: {r['text']}, исполняется {age} лет"
+            else:
+                msg = f"Сегодня: {r['text']}"
+            await context.bot.send_message(chat_id=OWNER_ID, text=msg)
         elif r["date"] == tomorrow_str:
-            await context.bot.send_message(
-                chat_id=OWNER_ID,
-                text=f"Завтра: {r['text']}"
-            )
+            if year:
+                age = tomorrow.year - year
+                msg = f"Завтра: {r['text']}, исполняется {age} лет"
+            else:
+                msg = f"Завтра: {r['text']}"
+            await context.bot.send_message(chat_id=OWNER_ID, text=msg)
 
 
 def main():
